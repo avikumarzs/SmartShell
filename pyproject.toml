@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smartshell"
+version = "1.0.0"
+description = "AI-powered CLI assistant."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "typer",
+    "groq",
+    "python-dotenv",
+    "rich"
+]
+
+[project.scripts]
+# This is the magic line. It creates the 'smart' command and points it to 'app' inside 'main.py'
+smart = "main:app"
+[tool.setuptools]
+py-modules = ["main"]

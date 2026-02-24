@@ -1,0 +1,9 @@
+LICENSE
+main.py
+pyproject.toml
+smartshell.egg-info/PKG-INFO
+smartshell.egg-info/SOURCES.txt
+smartshell.egg-info/dependency_links.txt
+smartshell.egg-info/entry_points.txt
+smartshell.egg-info/requires.txt
+smartshell.egg-info/top_level.txt

@@ -7,29 +7,47 @@ from datetime import datetime
 from groq import Groq
 from dotenv import load_dotenv
 from rich.console import Console
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.panel import Panel
 from rich.markdown import Markdown
 
-# 1. Setup
+# --- GLOBAL CONFIGURATION ---
+# This ensures the DB and API key are saved to the user's home directory (e.g., ~/.smartshell)
+USER_HOME = os.path.expanduser("~")
+CONFIG_DIR = os.path.join(USER_HOME, ".smartshell")
+os.makedirs(CONFIG_DIR, exist_ok=True)
+
+ENV_FILE = os.path.join(CONFIG_DIR, ".env")
+DB_PATH = os.path.join(CONFIG_DIR, "smartshell.db")
+
 console = Console()
-load_dotenv()
+app = typer.Typer()
+
+# 1. Setup & Auth
+load_dotenv(ENV_FILE)
 api_key = os.getenv("GROQ_API_KEY")
 
-if not api_key:
-    console.print("[bold red]ERROR:[/bold red] GROQ_API_KEY not found!")
-    raise typer.Exit()
+# Create a dummy client initially to avoid crashing before config
+client = Groq(api_key=api_key) if api_key else None
 
-client = Groq(api_key=api_key)
-app = typer.Typer()
+@app.command()
+def config():
+    """Initial setup to save your API key globally."""
+    console.print("[bold cyan]Welcome to SmartShell Setup![/bold cyan]")
+    key = Prompt.ask("Please paste your Groq API Key")
+    
+    with open(ENV_FILE, "w") as f:
+        f.write(f"GROQ_API_KEY={key}\n")
+    
+    console.print(f"[bold green]✅ Key saved securely in {ENV_FILE}[/bold green]")
+    console.print("You can now run [bold yellow]smart do[/bold yellow] from any folder!")
 
 # 2. Database Manager
 class HistoryManager:
-    def __init__(self, db_name="smartshell.db"):
-        # We use absolute pathing to ensure the DB stays in the same folder as the script
-        db_path = os.path.join(os.path.dirname(__file__), db_name)
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+    def __init__(self):
+        # We use the global DB_PATH now
+        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         self.create_table()
 
     def create_table(self):
@@ -49,7 +67,7 @@ class HistoryManager:
         try:
             query = "INSERT INTO history (timestamp, task, command, os_info) VALUES (?, ?, ?, ?)"
             self.conn.execute(query, (datetime.now().strftime("%Y-%m-%d %H:%M"), task, command, os_info))
-            self.conn.commit() # Forces the write to disk
+            self.conn.commit() 
             return True
         except Exception as e:
             console.print(f"[dim red]Database Error: {e}[/]")
@@ -63,6 +81,9 @@ class HistoryManager:
         self.conn.commit()
 
 history_db = HistoryManager()
+
+# --- KEEP THE REST OF YOUR CODE EXACTLY THE SAME BELOW THIS LINE ---
+# def get_system_info(): ...
 
 def get_system_info():
     system = platform.system()
