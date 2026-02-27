@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.panel import Panel
+import webbrowser
 from rich.markdown import Markdown
 
 # --- GLOBAL CONFIGURATION ---
@@ -37,21 +38,28 @@ client = Groq(api_key=api_key) if api_key else None
 def config():
     """Initial setup to save your API key and set assistant name."""
     console.print("[bold cyan]Welcome to SmartShell Setup![/bold cyan]")
-    key = Prompt.ask("Please paste your Groq API Key")
+    
+    # --- NEW: Helpful Redirect ---
+    console.print("\nTo use this tool, you need a free API key from Groq.")
+    console.print("Get one here: [bold blue][link=https://console.groq.com/keys]https://console.groq.com/keys[/link][/bold blue]")
+    
+    if Confirm.ask("Would you like to open this link in your browser now?"):
+        webbrowser.open("https://console.groq.com/keys")
+        console.print("[dim]Opening browser... Once you have your key, return here.[/dim]")
+    
+    key = Prompt.ask("\nPlease paste your Groq API Key").strip()
     
     with open(ENV_FILE, "w") as f:
         f.write(f"GROQ_API_KEY={key}\n")
     
-    console.print(f"[bold green]✅ Key saved securely in {ENV_FILE}[/bold green]")
+    console.print(f"\n[bold green]✅ Key saved securely in {ENV_FILE}[/bold green]")
     
     # --- ALIAS GENERATOR ---
     custom_name = Prompt.ask(
-        "What would you like to name your AI assistant? (Default key =>", 
-        default="smart )"
+        "What would you like to name your AI assistant? (Default key => smart)"
     ).strip().lower()
 
     if custom_name != "smart":
-        # Find exactly where Windows/Mac installed the original 'smart' command
         smart_path = shutil.which("smart")
         
         if smart_path:
@@ -68,20 +76,18 @@ def config():
                 with open(sh_path, "w") as f:
                     f.write(f'#!/bin/sh\nsmart "$@"\n')
                 
-                # Make the Mac/Linux file executable
                 st = os.stat(sh_path)
                 os.chmod(sh_path, st.st_mode | stat.S_IEXEC)
                 
                 console.print(f"\n[bold green]✅ Assistant successfully renamed to '{custom_name}'![/bold green]")
                 console.print(f"You can now run [bold yellow]{custom_name} do[/bold yellow] from any folder!")
             except Exception as e:
-                console.print(f"\n[bold red]❌ Could not create alias due to permissions: {e}[/bold red]")
+                console.print(f"\n[bold red]❌ Could not create alias: {e}[/bold red]")
                 console.print("You can still run [bold yellow]smart do[/bold yellow].")
         else:
             console.print("\n[bold red]❌ Could not locate installation path.[/bold red]")
     else:
         console.print("\nYou can now run [bold yellow]smart do[/bold yellow] from any folder!")
-
 # 2. Database Manager
 class HistoryManager:
     def __init__(self):
