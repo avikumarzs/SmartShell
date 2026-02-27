@@ -1,3 +1,6 @@
+import shutil
+import sys
+import stat
 import typer
 import os
 import platform
@@ -13,7 +16,6 @@ from rich.panel import Panel
 from rich.markdown import Markdown
 
 # --- GLOBAL CONFIGURATION ---
-# This ensures the DB and API key are saved to the user's home directory (e.g., ~/.smartshell)
 USER_HOME = os.path.expanduser("~")
 CONFIG_DIR = os.path.join(USER_HOME, ".smartshell")
 os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -33,7 +35,7 @@ client = Groq(api_key=api_key) if api_key else None
 
 @app.command()
 def config():
-    """Initial setup to save your API key globally."""
+    """Initial setup to save your API key and set assistant name."""
     console.print("[bold cyan]Welcome to SmartShell Setup![/bold cyan]")
     key = Prompt.ask("Please paste your Groq API Key")
     
@@ -41,20 +43,58 @@ def config():
         f.write(f"GROQ_API_KEY={key}\n")
     
     console.print(f"[bold green]✅ Key saved securely in {ENV_FILE}[/bold green]")
-    console.print("You can now run [bold yellow]smart do[/bold yellow] from any folder!")
+    
+    # --- ALIAS GENERATOR ---
+    custom_name = Prompt.ask(
+        "What would you like to name your AI assistant? (Default key =>", 
+        default="smart )"
+    ).strip().lower()
+
+    if custom_name != "smart":
+        # Find exactly where Windows/Mac installed the original 'smart' command
+        smart_path = shutil.which("smart")
+        
+        if smart_path:
+            scripts_dir = os.path.dirname(smart_path)
+            
+            try:
+                # 1. Create Windows Batch File (.bat)
+                bat_path = os.path.join(scripts_dir, f"{custom_name}.bat")
+                with open(bat_path, "w") as f:
+                    f.write(f"@echo off\nsmart %*\n")
+                
+                # 2. Create Mac/Linux Shell Script
+                sh_path = os.path.join(scripts_dir, f"{custom_name}")
+                with open(sh_path, "w") as f:
+                    f.write(f'#!/bin/sh\nsmart "$@"\n')
+                
+                # Make the Mac/Linux file executable
+                st = os.stat(sh_path)
+                os.chmod(sh_path, st.st_mode | stat.S_IEXEC)
+                
+                console.print(f"\n[bold green]✅ Assistant successfully renamed to '{custom_name}'![/bold green]")
+                console.print(f"You can now run [bold yellow]{custom_name} do[/bold yellow] from any folder!")
+            except Exception as e:
+                console.print(f"\n[bold red]❌ Could not create alias due to permissions: {e}[/bold red]")
+                console.print("You can still run [bold yellow]smart do[/bold yellow].")
+        else:
+            console.print("\n[bold red]❌ Could not locate installation path.[/bold red]")
+    else:
+        console.print("\nYou can now run [bold yellow]smart do[/bold yellow] from any folder!")
 
 # 2. Database Manager
 class HistoryManager:
     def __init__(self):
-        # We use the global DB_PATH now
         self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         self.create_table()
+        self.migrate() # Automatically updates old databases!
 
     def create_table(self):
         query = """
         CREATE TABLE IF NOT EXISTS history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT,
+            cmd_type TEXT,
             task TEXT,
             command TEXT,
             os_info TEXT
@@ -63,10 +103,19 @@ class HistoryManager:
         self.conn.execute(query)
         self.conn.commit()
 
-    def save(self, task, command, os_info):
+    def migrate(self):
+        """Adds the new cmd_type column to existing databases without deleting them."""
         try:
-            query = "INSERT INTO history (timestamp, task, command, os_info) VALUES (?, ?, ?, ?)"
-            self.conn.execute(query, (datetime.now().strftime("%Y-%m-%d %H:%M"), task, command, os_info))
+            self.conn.execute("ALTER TABLE history ADD COLUMN cmd_type TEXT DEFAULT 'do'")
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            # If the column already exists, SQLite throws an error, which we just ignore.
+            pass
+
+    def save(self, cmd_type, task, command, os_info):
+        try:
+            query = "INSERT INTO history (timestamp, cmd_type, task, command, os_info) VALUES (?, ?, ?, ?, ?)"
+            self.conn.execute(query, (datetime.now().strftime("%Y-%m-%d %H:%M"), cmd_type, task, command, os_info))
             self.conn.commit() 
             return True
         except Exception as e:
@@ -74,16 +123,14 @@ class HistoryManager:
             return False
 
     def get_all(self, limit=10):
-        return self.conn.execute("SELECT timestamp, task, command FROM history ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        # We now pull 4 columns: timestamp, cmd_type, task, command
+        return self.conn.execute("SELECT timestamp, cmd_type, task, command FROM history ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
 
     def clear_all(self):
         self.conn.execute("DELETE FROM history")
         self.conn.commit()
 
 history_db = HistoryManager()
-
-# --- KEEP THE REST OF YOUR CODE EXACTLY THE SAME BELOW THIS LINE ---
-# def get_system_info(): ...
 
 def get_system_info():
     system = platform.system()
@@ -111,7 +158,6 @@ def do(task: str):
                 model="llama-3.1-8b-instant",
             )
         
-        # IMPROVED CLEANING: Strips backticks, code blocks, and extra whitespace
         command = response.choices[0].message.content.strip()
         command = command.replace("```powershell", "").replace("```bash", "").replace("```", "").replace("`", "").strip()
         
@@ -125,7 +171,8 @@ def do(task: str):
             console.print(f"[bold red]WARNING:[/bold red] Destructive action detected: {', '.join(risks)}.")
         
         if Confirm.ask(f"Run and log this command?"):
-            if history_db.save(task, command, os_name):
+            # Passing "do" as the new first argument
+            if history_db.save("do", task, command, os_name):
                 console.print("[dim green]✔ Logged to history[/]")
             
             flag = "-Command" if os_name == "Windows" else "-c"
@@ -136,13 +183,38 @@ def do(task: str):
 
 @app.command()
 def explain(command: str):
-    """Explains a command in detail."""
-    prompt = f"Explain this command as a Senior DevOps Engineer in Markdown: `{command}`"
+    """Explains a command or answers a CLI question in detail."""
+    prompt = f"""You are a technical CLI expert. The user asked: `{command}`.
+
+    Directly answer the question or explain the command.
+    - If the user provided a raw command, explain its purpose, key flags, and give examples.
+    - If the user asked a question, answer it directly, completely, and precisely.
+
+    CRITICAL RULES:
+    1. Format your response in clean Markdown using bullet points and bold text for readability.
+    2. Do NOT use triple backticks (```) for code blocks. Use single backticks (`code`) instead.
+    3. STRICTLY NO FLUFF: Do not write introductions, overviews, or conclusions. Never say "Here is the explanation" or "As a DevOps Engineer". Start immediately with the technical facts.
+    """
+    
     try:
         with console.status("[bold blue]Analyzing...[/]"):
-            response = client.chat.completions.create(messages=[{"role":"user","content":prompt}], model="llama-3.1-8b-instant")
-        explanation = Markdown(response.choices[0].message.content.strip())
+            response = client.chat.completions.create(
+                messages=[{"role":"user","content":prompt}], 
+                model="llama-3.1-8b-instant"
+            )
+            
+        raw_content = response.choices[0].message.content.strip()
+        # Clean out any rogue backticks just in case
+        clean_content = raw_content.replace("```bash", "").replace("```powershell", "").replace("```", "")
+        
+        explanation = Markdown(clean_content)
+        # Simplified the title so it doesn't stretch too long with long questions
         console.print(Panel(explanation, title="EXPLANATION", border_style="blue", padding=(1, 2)))
+        
+        # Log this interaction to the database
+        os_name, _, _ = get_system_info()
+        history_db.save("explain", "Explanation Request", command, os_name)
+        
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
 
@@ -156,11 +228,13 @@ def history(limit: int = 10):
 
     table = Table(title="Recent Tasks")
     table.add_column("Time", style="cyan")
+    table.add_column("Type", style="yellow")
     table.add_column("Intent", style="green")
     table.add_column("Command", style="magenta")
 
     for item in items:
-        table.add_row(item[0], item[1], item[2])
+        # Accessing indices 0-3 correctly to match the 4 returned columns
+        table.add_row(item[0], item[1], item[2], item[3])
     console.print(table)
 
 @app.command()
