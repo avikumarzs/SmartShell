@@ -30,14 +30,14 @@ Open your standard terminal and run:
 Linux environments strictly manage system packages. Install the prerequisites and use the `--user` flag to install safely:
 
 **1. Install prerequisites**
-`sudo apt update`
+```sudo apt update```
 `sudo apt install python3-pip git -y`
 
 **2. Install SmartShell globally for your user**
 `pip3 install --user --break-system-packages git+https://github.com/avikumarzs/SmartShell.git`
 
 **3. Add the local bin to your PATH (if not already configured)**
-`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`
+```echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc```
 `source ~/.bashrc`
 
 ---
@@ -86,3 +86,31 @@ If you need to completely remove SmartShell and wipe your local database:
 `pip3 uninstall smartshell --break-system-packages -y`
 `rm -rf ~/.smartshell`
 `rm -f ~/.local/bin/smart`
+
+---
+
+## 💻 Tech Stack
+
+* **Language:** Python 3.x
+* **AI Engine:** Groq API (LLaMA 3 / Mixtral)
+* **CLI Framework:** Rich (for terminal formatting)
+* **Database:** SQLite3 (local history vault)
+
+---
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome! 
+If you find a bug or have a suggestion for a new feature (like supporting a new OS or adding a new command engine), please open an issue or submit a pull request.
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
