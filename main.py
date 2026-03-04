@@ -16,6 +16,7 @@ from rich.panel import Panel
 import webbrowser
 from rich.markdown import Markdown
 from rich.prompt import Confirm,Prompt
+import re
 
 # --- GLOBAL CONFIGURATION ---
 USER_HOME = os.path.expanduser("~")
@@ -169,8 +170,8 @@ def do(task: str):
     os_name, shell_name, executable = get_system_info()
     console.print(f"\n[bold cyan]Env:[/bold cyan] {os_name} | [bold green]Task:[/bold green] {task}")
     
-    # 1. Updated prompt to explicitly ask for placeholders
-    prompt = f"Translate to a single {shell_name} command for {os_name} (output ONLY the command). If specific file/folder names are missing, use clear placeholders like <FILENAME>: {task}"
+    # 1. Stricter Prompt: Forces simplicity and conversational [bracketed] placeholders
+    prompt = f"Translate to a single {shell_name} command for {os_name} (output ONLY the command). Keep it as simple and direct as possible. If specific names are missing, use simple placeholders enclosed in square brackets, like [name of file] or [destination folder]: {task}"
     
     try:
         with console.status("[bold blue]Consulting AI...[/]"):
@@ -191,37 +192,59 @@ def do(task: str):
         if risks:
             console.print(f"[bold red]WARNING:[/bold red] Destructive action detected: {', '.join(risks)}.")
         
-        # 2. Replaced Confirm with multi-choice Prompt
         action = Prompt.ask(
             "What would you like to do?",
-            choices=["y", "n", "e"],
-            default="y",
+            choices=["Y", "N", "Edit"],
             show_choices=True
         )
 
         final_command = command
 
-        if action == "e":
-            # 3. Handle the 'edit' option
-            console.print("\n[yellow]Copy the command above, paste it below, and replace the placeholders:[/yellow]")
+        if action == "Y" or action == "y":
+            # 1. Check for placeholders BEFORE trying to execute
+            placeholders = re.findall(r'\[.*?\]', final_command)
+            
+            if placeholders:
+                console.print("\n[dim cyan]Enter User Data =>[/dim cyan]")
+                unique_placeholders = list(dict.fromkeys(placeholders))
+                
+                for ph in unique_placeholders:
+                    clean_name = ph.strip("[]")
+                    user_input = console.input(f"[bold yellow]{clean_name}[/bold yellow]: ")
+                    
+                    if user_input.strip():
+                        final_command = final_command.replace(ph, user_input.strip())
+                
+                console.print(f"\n[bold green]Ready to run:[/bold green] {final_command}")
+                
+                # Ask one last time since the command changed
+                if not Confirm.ask("Execute this now?"):
+                    console.print("[red]Execution cancelled.[/red]")
+                    return
+
+        elif action == "Edit" or action == "edit":
+            # 2. Pure Manual Edit Mode (if you want to type the raw command yourself)
+            console.print("\n[yellow]Manual Edit Mode:[/yellow]")
+            console.print(f"[dim]Original: {final_command}[/dim]")
             edited = console.input("[bold cyan]> [/bold cyan]")
             
             if not edited.strip():
-                console.print("[red]Execution cancelled. No command entered.[/red]")
+                console.print("[red]Execution cancelled.[/red]")
                 return
             
             final_command = edited.strip()
-
-        if action in ["y", "e"]:
-            # 4. Save and execute the *final* command (whether edited or original)
-            if history_db.save("do", task, final_command, os_name):
-                console.print("[dim green]✔ Logged to history[/]")
-            
-            flag = "-Command" if os_name == "Windows" else "-c"
-            subprocess.run([executable, flag, final_command])
             
         else:
+            # 3. User pressed 'n'
             console.print("[red]Execution cancelled.[/red]")
+            return
+
+        # 4. Final Execution Block (Runs if 'y' or 'e' successfully finished)
+        if history_db.save("do", task, final_command, os_name):
+            console.print("[dim green]✔ Logged to history[/]")
+        
+        flag = "-Command" if os_name == "Windows" else "-c"
+        subprocess.run([executable, flag, final_command])
             
     except Exception as e:
         console.print(f"\n[bold red]Error:[/bold red] {e}")

@@ -1,4 +1,5 @@
 LICENSE
+README.md
 main.py
 pyproject.toml
 smartshell.egg-info/PKG-INFO
