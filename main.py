@@ -44,8 +44,21 @@ def config():
     console.print("Get one here: [bold blue][link=https://console.groq.com/keys]https://console.groq.com/keys[/link][/bold blue]")
     
     if Confirm.ask("Would you like to open this link in your browser now?"):
-        webbrowser.open("https://console.groq.com/keys")
+        url = "https://console.groq.com/keys"
         console.print("[dim]Opening browser... Once you have your key, return here.[/dim]")
+        
+        if "microsoft" in platform.uname().release.lower() or "wsl" in platform.uname().release.lower():
+            try:
+                # 1st attempt: Built-in Ubuntu WSL browser bridge
+                subprocess.run(["wslview", url], check=False)
+            except FileNotFoundError:
+                try:
+                    # 2nd attempt: Force Windows CMD to launch the default browser
+                    subprocess.run(["cmd.exe", "/c", "start", url], check=False)
+                except Exception:
+                    console.print(f"[dim]Please open manually: {url}[/dim]")
+        else:
+            webbrowser.open(url)
     
     key = Prompt.ask("\nPlease paste your Groq API Key").strip()
     
