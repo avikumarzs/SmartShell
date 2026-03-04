@@ -2,7 +2,7 @@
 
 An AI-powered, multi-platform command-line assistant that translates natural language into executable OS commands, explains complex shell instructions, and keeps a local history of your workflows.
 
-Powered by Groq's lightning-fast API, SmartShell detects your operating system (Windows, Linux, or macOS) and writes the correct syntax (PowerShell or Bash) automatically.
+Powered by Groq's lightning-fast API, SmartShell detects your operating system (Windows or Linux) and writes the correct syntax (PowerShell or Bash) automatically.
 
 ---
 
