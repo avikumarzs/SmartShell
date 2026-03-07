@@ -50,7 +50,7 @@ Once installed, initialize your assistant and link it to the Groq API:
 
 1. The setup wizard will guide you to generate a free API key from Groq.
 2. Paste the key when prompted.
-3. **Choose an Alias:** You can type a custom name for your assistant (like `jarvis` or `khet`). If you set an alias, you will use that word instead of `smart` for all future commands!
+3. **Choose an Alias:** You can type a custom name for your assistant (like `jarvis` or `ronaldo`). If you set an alias, you will use that word instead of `smart` for all future commands!
 
 ---
 
