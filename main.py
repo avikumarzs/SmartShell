@@ -6,6 +6,7 @@ import os
 import platform
 import subprocess
 import sqlite3
+import re
 from datetime import datetime
 from groq import Groq
 from dotenv import load_dotenv
@@ -13,10 +14,8 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.panel import Panel
-import webbrowser
 from rich.markdown import Markdown
-from rich.prompt import Confirm,Prompt
-import re
+import webbrowser
 
 # --- GLOBAL CONFIGURATION ---
 USER_HOME = os.path.expanduser("~")
@@ -41,7 +40,7 @@ def config():
     """Initial setup to save your API key and set assistant name."""
     console.print("[bold cyan]Welcome to SmartShell Setup![/bold cyan]")
     
-    # --- NEW: Helpful Redirect ---
+    # --- Helpful Redirect ---
     console.print("\nTo use this tool, you need a free API key from Groq.")
     console.print("Get one here: [bold blue][link=https://console.groq.com/keys]https://console.groq.com/keys[/link][/bold blue]")
     
@@ -103,6 +102,7 @@ def config():
             console.print("\n[bold red]❌ Could not locate installation path.[/bold red]")
     else:
         console.print("\nYou can now run [bold yellow]smart do[/bold yellow] from any folder!")
+
 # 2. Database Manager
 class HistoryManager:
     def __init__(self):
@@ -194,13 +194,14 @@ def do(task: str):
         
         action = Prompt.ask(
             "What would you like to do?",
-            choices=["Y", "N", "Edit"],
+            choices=["y", "n", "e"],
+            default="y",
             show_choices=True
         )
 
         final_command = command
 
-        if action == "Y" or action == "y":
+        if action.lower() == "y":
             # 1. Check for placeholders BEFORE trying to execute
             placeholders = re.findall(r'\[.*?\]', final_command)
             
@@ -222,7 +223,7 @@ def do(task: str):
                     console.print("[red]Execution cancelled.[/red]")
                     return
 
-        elif action == "Edit" or action == "edit":
+        elif action.lower() == "e":
             # 2. Pure Manual Edit Mode (if you want to type the raw command yourself)
             console.print("\n[yellow]Manual Edit Mode:[/yellow]")
             console.print(f"[dim]Original: {final_command}[/dim]")
@@ -239,13 +240,20 @@ def do(task: str):
             console.print("[red]Execution cancelled.[/red]")
             return
 
-        # 4. Final Execution Block (Runs if 'y' or 'e' successfully finished)
-        if history_db.save("do", task, final_command, os_name):
-            console.print("[dim green]✔ Logged to history[/]")
-        
+        # 4. Final Execution Block with Success Check
         flag = "-Command" if os_name == "Windows" else "-c"
-        subprocess.run([executable, flag, final_command])
-            
+        
+        # Run the command and capture its exit status (returncode)
+        result = subprocess.run([executable, flag, final_command])
+
+        if result.returncode == 0:
+            # Success! Save it to the database
+            if history_db.save("do", task, final_command, os_name):
+                console.print("\n[dim green]✔ Executed successfully & logged to history[/]")
+        else:
+            # Failure! The OS printed the error, so we just let the user know it wasn't saved.
+            console.print("\n[bold red]❌ Execution failed.[/bold red] [dim]Command was not logged to history.[/dim]")
+
     except Exception as e:
         console.print(f"\n[bold red]Error:[/bold red] {e}")
 
@@ -272,14 +280,11 @@ def explain(command: str):
             )
             
         raw_content = response.choices[0].message.content.strip()
-        # Clean out any rogue backticks just in case
         clean_content = raw_content.replace("```bash", "").replace("```powershell", "").replace("```", "")
         
         explanation = Markdown(clean_content)
-        # Simplified the title so it doesn't stretch too long with long questions
         console.print(Panel(explanation, title="EXPLANATION", border_style="blue", padding=(1, 2)))
         
-        # Log this interaction to the database
         os_name, _, _ = get_system_info()
         history_db.save("explain", "Explanation Request", command, os_name)
         
@@ -287,7 +292,7 @@ def explain(command: str):
         console.print(f"[bold red]Error:[/bold red] {e}")
 
 @app.command()
-def history(limit: int = 10):
+def history(limit: int = 7):
     """Shows recent history."""
     items = history_db.get_all(limit)
     if not items:
