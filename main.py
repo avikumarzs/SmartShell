@@ -167,6 +167,10 @@ def check_risk(command: str):
 @app.command()
 def do(task: str):
     """Generates, logs, and executes a command."""
+    if not client:
+        console.print("[bold red]SmartShell is not configured![/bold red] Please run [bold yellow]config[/bold yellow] first.")
+        raise typer.Exit()
+        
     os_name, shell_name, executable = get_system_info()
     console.print(f"\n[bold cyan]Env:[/bold cyan] {os_name} | [bold green]Task:[/bold green] {task}")
     
@@ -177,7 +181,7 @@ def do(task: str):
         with console.status("[bold blue]Consulting AI...[/]"):
             response = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama-3.1-8b-instant",
+                model="openai/gpt-oss-20b",
             )
         
         command = response.choices[0].message.content.strip()
@@ -260,6 +264,10 @@ def do(task: str):
 @app.command()
 def explain(command: str):
     """Explains a command or answers a CLI question in detail."""
+    if not client:
+        console.print("[bold red]SmartShell is not configured![/bold red] Please run [bold yellow]config[/bold yellow] first.")
+        raise typer.Exit()
+        
     prompt = f"""You are a technical CLI expert. The user asked: `{command}`.
 
     Directly answer the question or explain the command.
@@ -276,7 +284,7 @@ def explain(command: str):
         with console.status("[bold blue]Analyzing...[/]"):
             response = client.chat.completions.create(
                 messages=[{"role":"user","content":prompt}], 
-                model="llama-3.1-8b-instant"
+                model="openai/gpt-oss-20b"
             )
             
         raw_content = response.choices[0].message.content.strip()
@@ -316,6 +324,22 @@ def clear():
     if Confirm.ask("[bold red]Delete everything?[/]"):
         history_db.clear_all()
         console.print("[bold green]History cleared.[/bold green]")
+
+@app.command()
+def reset():
+    """Factory resets SmartShell by deleting the API key and history."""
+    if Confirm.ask("[bold red]Are you sure you want to completely reset SmartShell? This will delete your API key and all history.[/]"):
+        try:
+            # Close the database connection to release file locks before deleting the folder
+            history_db.conn.close() 
+            
+            if os.path.exists(CONFIG_DIR):
+                shutil.rmtree(CONFIG_DIR)
+                console.print("[bold green]Reset complete! You must run 'config' to set up the tool again.[/bold green]")
+            else:
+                console.print("[yellow]Nothing to reset.[/yellow]")
+        except Exception as e:
+            console.print(f"[bold red]Error during reset:[/bold red] {e}")
 
 if __name__ == "__main__":
     app()
